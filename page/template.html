@@ -1,0 +1,449 @@
+<title>Glue, as Code</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column on phones (stage, then the code), stage + code side by side on wide screens.
+   Single dark look on purpose: it's a club-at-night visualiser. */
+:root {
+  --ink: #0a0c16;
+  --panel: #11152a;
+  --line: #242b4a;
+  --fg: #e9ebf6;
+  --muted: #8d93b3;
+  --accent: #8b6cff;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--ink); color: var(--fg); }
+body {
+  font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 12px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(34px, 8vw, 68px); line-height: 1; margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { max-width: 62ch; margin: 0; color: var(--fg); }
+.lede b { font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+button, .btn {
+  font: 600 14px/1 var(--body); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 999px; padding: 11px 16px; cursor: pointer;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+}
+button:hover, .btn:hover { border-color: var(--muted); }
+button:focus-visible, .btn:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#play { background: var(--accent); border-color: var(--accent); color: var(--ink); font-size: 16px; padding: 14px 22px; }
+#play[disabled] { opacity: .5; cursor: wait; }
+#status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.grid { display: grid; gap: 28px; grid-template-columns: 1fr; }
+@media (min-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } .codecol { position: sticky; top: 16px; } }
+section > h2 { font-family: var(--display); font-weight: 500; font-size: 15px; letter-spacing: .02em; margin: 0 0 10px; color: var(--muted); }
+
+.now { display: grid; grid-template-columns: auto 1fr; gap: 4px 18px; align-items: end; margin-bottom: 14px; }
+.chord { font-family: var(--display); font-weight: 800; font-size: clamp(40px, 11vw, 64px); line-height: .95; grid-row: span 2; min-width: 3.6ch; }
+.pos { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 12px/1 var(--mono); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+.chip.on { color: var(--ink); background: var(--c); border-color: var(--c); }
+
+.lanes { display: grid; gap: 6px; }
+.lane { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.lane button { border-radius: 8px; padding: 0 8px; font: 600 12px/1.2 var(--mono); justify-content: flex-start; border-color: var(--line); color: var(--c); background: var(--panel); flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+.lane button small { font-weight: 400; color: var(--muted); font-size: 10px; }
+.lane.muted button { color: var(--muted); text-decoration: line-through; }
+.lane canvas { width: 100%; height: 58px; display: block; background: var(--panel); border-radius: 8px; }
+.lane.drums canvas { height: 104px; }
+.hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+#map { width: 100%; height: 92px; display: block; background: var(--panel); border-radius: 8px; margin-top: 18px; }
+
+.codehead { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.codehead h2 { margin: 0; }
+.codebtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.codebtns button, .codebtns .btn { padding: 8px 12px; font-size: 13px; }
+pre#code, textarea#editor {
+  margin: 0; font: 12.5px/1.6 var(--mono); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px; overflow: auto; max-height: 78vh; color: var(--fg); tab-size: 2;
+}
+textarea#editor { width: 100%; box-sizing: border-box; min-height: 60vh; resize: vertical; white-space: pre; }
+pre#code .cm { color: #6e7596; }
+pre#code .str { color: #c9cde3; }
+pre#code span.hit { color: var(--ink); background: var(--c); border-radius: 3px; box-shadow: 0 0 12px var(--c); }
+#err { font-family: var(--mono); font-size: 12px; color: #ff8a8a; margin: 8px 0 0; white-space: pre-wrap; }
+
+.try { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.try div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.try h3 { font: 600 14px/1.3 var(--body); margin: 0 0 6px; }
+.try p { margin: 0; color: var(--muted); font-size: 14px; }
+code { font-family: var(--mono); font-size: .92em; color: var(--fg); }
+.how { max-width: 70ch; display: grid; gap: 10px; }
+.how p { margin: 0; }
+footer { font-size: 13px; color: var(--muted); max-width: 70ch; }
+footer a { color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { pre#code span.hit { box-shadow: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Open-source song · Bicep, “Glue” (2017) · 130 BPM · F minor</div>
+    <h1>Glue, <em>as code.</em></h1>
+    <p class="lede">The whole track is the <b>fewer than 60 lines of text</b> on this page. There are no recordings and no samples, not even for the drums. Press play and your browser builds every sound from the code: oscillators, noise, filters and envelopes. The highlighted characters are the ones playing right now.</p>
+    <div class="controls">
+      <button id="play" disabled>Loading engine…</button>
+      <span id="status">Turn your volume up. Headphones help with the bass.</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="stage" aria-label="What is playing">
+      <div class="now">
+        <div class="chord" id="chord">Fm9</div>
+        <div class="pos" id="pos">bar 1 of 32 · beat 1</div>
+        <div class="parts" id="parts"></div>
+      </div>
+      <div class="lanes" id="lanes"></div>
+      <p class="hint">Tap a part's name to mute it. Watch the last line of the code change: muting is just editing the text.</p>
+      <canvas id="map" aria-label="32-bar arrangement: which parts play in each bar"></canvas>
+      <p class="hint">The arrangement. Each row is a part, each column a bar. The intro, build, breakdown and drop come from the three <code>mask</code> lines in the code.</p>
+    </section>
+
+    <section class="codecol" aria-label="Source code">
+      <div class="codehead">
+        <h2>The source. This is the whole song.</h2>
+        <div class="codebtns">
+          <button id="edit">Edit</button>
+          <button id="copy">Copy</button>
+          <a class="btn" id="strudel" href="https://strudel.cc/" target="_blank" rel="noopener">Open in Strudel ↗</a>
+        </div>
+      </div>
+      <pre id="code"></pre>
+      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" hidden></textarea>
+      <div id="err" hidden></div>
+    </section>
+  </div>
+
+  <section aria-label="Things to try">
+    <h2>Don't believe it? Change it.</h2>
+    <div class="try">
+      <div><h3>Speed it up</h3><p>Tap Edit, change <code>setcpm(130/4)</code> to <code>setcpm(174/4)</code>, then Run. Now it's drum and bass.</p></div>
+      <div><h3>Change the harmony</h3><p>Swap <code>Fm9</code> in the <code>prog</code> line for <code>F^7</code>. The pads, stabs and arp all follow, because they all read that one line.</p></div>
+      <div><h3>Rewrite the beat</h3><p>In the <code>kick</code> line, each <code>~</code> is a silent 16th note. Replace every <code>~</code> with <code>c2</code> for four to the floor.</p></div>
+      <div><h3>Take it anywhere</h3><p>Open in Strudel puts the same text in the free online editor, where anyone can play it, change it and share it. Nothing to install.</p></div>
+    </div>
+  </section>
+
+  <section class="how" aria-label="How it works">
+    <h2>How is this possible?</h2>
+    <p><b>Strudel</b> is a free, open-source live-coding language that runs in the browser. It's a JavaScript port of TidalCycles, which people use to perform electronic music live by typing.</p>
+    <p>Patterns in quotes are rhythms: <code>"x ~ ~ x ~ ~ x ~"</code> splits a bar into eight steps and plays on the x's. <code>&lt; &gt;</code> means one item per bar, which is how the four chords cycle. Everything after a dot shapes the sound: <code>.lpf()</code> is a low-pass filter, <code>.room()</code> is reverb, <code>.delay()</code> is an echo.</p>
+    <p>The drums are maths too. The kick is a sine wave whose pitch drops fast (<code>penv</code>). The hats are white noise through a high-pass filter. The clap is pink noise through a band-pass filter.</p>
+  </section>
+
+  <footer>
+    A homage written from memory of how the track feels, not a transcription of Bicep's recording. “Glue” belongs to Bicep. This code is free to copy and change. Built with <a href="https://strudel.cc" target="_blank" rel="noopener">Strudel</a>.
+  </footer>
+</div>
+
+<script type="text/plain" id="song">{{SONG}}</script>
+<script src="https://unpkg.com/@strudel/web@1.2.6"></script>
+<script>
+(() => {
+  const LANES = [
+    { key: 'pads',  color: '#8b6cff', label: 'pads',  sub: 'saw chords' },
+    { key: 'stabs', color: '#3fa7ff', label: 'stabs', sub: 'off-beats' },
+    { key: 'arp',   color: '#2ee6c8', label: 'arp',   sub: 'triangle' },
+    { key: 'lead',  color: '#ff5fa2', label: 'lead',  sub: '"vocal"' },
+    { key: 'bass',  color: '#ffb347', label: 'bass',  sub: 'sub sine' },
+    { key: 'drums', color: '#f2f2f2', label: 'drums', sub: 'synthesised' },
+  ];
+  const DRUM_ROWS = ['kick', 'clap', 'rim', 'hats', 'openhat'];
+  const BARS = 32;
+  const original = document.getElementById('song').textContent.replace(/^\n/, '');
+  let code = original;
+  const muted = new Set();
+
+  const $ = id => document.getElementById(id);
+  const playBtn = $('play'), statusEl = $('status'), codeEl = $('code'), editor = $('editor'), errEl = $('err');
+
+  // ---------- lanes DOM ----------
+  const laneEls = {};
+  for (const l of LANES) {
+    const row = document.createElement('div');
+    row.className = 'lane' + (l.key === 'drums' ? ' drums' : '');
+    row.style.setProperty('--c', l.color);
+    const b = document.createElement('button');
+    b.innerHTML = `${l.label}<small>${l.sub}</small>`;
+    b.title = 'Mute or unmute ' + l.label;
+    b.addEventListener('click', () => toggleMute(l.key));
+    const cv = document.createElement('canvas');
+    row.append(b, cv);
+    $('lanes').append(row);
+    laneEls[l.key] = { row, cv };
+    const chip = document.createElement('span');
+    chip.className = 'chip'; chip.textContent = l.label; chip.style.setProperty('--c', l.color);
+    $('parts').append(chip);
+    laneEls[l.key].chip = chip;
+  }
+  const laneByColor = Object.fromEntries(LANES.map(l => [l.color, l.key]));
+
+  // ---------- helpers ----------
+  const toMidi = v => {
+    if (v == null) return null;
+    if (typeof v === 'number') return v;
+    try { return noteToMidi(v); } catch { return null; }
+  };
+  const prettyChord = c => c.replace('^7', 'maj7').replace(/^([A-G])b/, '$1♭').replace(/^([A-G])#/, '$1♯');
+  const strudelLink = c => 'https://strudel.cc/#' + encodeURIComponent(btoa(unescape(encodeURIComponent(c))));
+
+  // which `const name` a character offset belongs to (used for drum rows)
+  function constAt(src, off) {
+    const re = /(^|\n)const\s+(\w+)/g; let m, name = null;
+    while ((m = re.exec(src)) && m.index <= off) name = m[2];
+    return name;
+  }
+  function commentRanges(src) {
+    const r = []; const re = /\/\/[^\n]*/g; let m;
+    while ((m = re.exec(src))) r.push([m.index, m.index + m[0].length]);
+    return r;
+  }
+
+  // ---------- model built from the evaluated pattern ----------
+  let model = null;
+  function buildModel(pattern, src) {
+    const comments = commentRanges(src);
+    const inComment = (s) => comments.some(([a, b]) => s >= a && s < b);
+    const haps = pattern.queryArc(0, BARS).filter(h => h.hasOnset()).map(h => {
+      const lane = laneByColor[h.value.color] || 'drums';
+      const locs = (h.context.locations || []).filter(l => !inComment(l.start));
+      const midi = toMidi(h.value.note);
+      const row = lane === 'drums' ? (locs.map(l => constAt(src, l.start)).find(n => DRUM_ROWS.includes(n)) || null) : null;
+      return { b: h.whole.begin.valueOf(), e: h.whole.end.valueOf(), lane, midi, row, locs };
+    });
+    const range = {}; const map = {};
+    for (const l of LANES) { range[l.key] = [Infinity, -Infinity]; map[l.key] = new Array(BARS).fill(0); }
+    for (const h of haps) {
+      if (h.midi != null) { const r = range[h.lane]; r[0] = Math.min(r[0], h.midi); r[1] = Math.max(r[1], h.midi); }
+      map[h.lane][Math.floor(h.b) % BARS] = 1;
+    }
+    const byBar = Array.from({ length: BARS }, () => []);
+    for (const h of haps) byBar[Math.floor(h.b) % BARS].push(h);
+    const pm = src.match(/const\s+prog\s*=\s*"<([^>]+)>"/);
+    const chords = pm ? pm[1].trim().split(/\s+/) : [];
+    model = { haps, range, map, byBar, chords };
+    renderCode(src, haps);
+  }
+
+  // ---------- code view with per-token spans ----------
+  let segSpans = new Map(); // "start:end" -> [span]
+  function renderCode(src, haps) {
+    const cuts = new Set([0, src.length]);
+    const keys = new Set();
+    for (const h of haps) for (const l of h.locs) { cuts.add(l.start); cuts.add(l.end); keys.add(l.start + ':' + l.end); }
+    const comments = commentRanges(src); for (const [a, b] of comments) { cuts.add(a); cuts.add(b); }
+    const pts = [...cuts].sort((a, b) => a - b);
+    const frag = document.createDocumentFragment();
+    const spans = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const s = document.createElement('span');
+      s.textContent = src.slice(a, b);
+      if (comments.some(([x, y]) => a >= x && b <= y)) s.className = 'cm';
+      s._a = a; s._b = b; spans.push(s); frag.append(s);
+    }
+    segSpans = new Map();
+    for (const k of keys) {
+      const [a, b] = k.split(':').map(Number);
+      segSpans.set(k, spans.filter(s => s._a >= a && s._b <= b));
+    }
+    codeEl.replaceChildren(frag);
+    lit = new Set();
+    $('strudel').href = strudelLink(src);
+  }
+
+  // ---------- engine ----------
+  let repl = null, pattern = null, playing = false;
+  async function apply(src) {
+    try {
+      const p = await repl.evaluate(src, playing);
+      if (!p || !p.queryArc) throw new Error('The code ran but did not end with a pattern. Keep a stack(...) as the last line.');
+      pattern = p; code = src; errEl.hidden = true;
+      buildModel(pattern, code);
+      return true;
+    } catch (e) {
+      errEl.textContent = 'That change did not run: ' + (e.message || e);
+      errEl.hidden = false;
+      return false;
+    }
+  }
+
+  function toggleMute(key) {
+    if (!repl) return;
+    muted.has(key) ? muted.delete(key) : muted.add(key);
+    laneEls[key].row.classList.toggle('muted', muted.has(key));
+    const lines = code.split('\n');
+    let i = lines.length - 1; while (i >= 0 && !/^stack\(/.test(lines[i])) i--;
+    if (i < 0) return;
+    const m = lines[i].match(/^stack\(([^)]*)\)(.*)$/);
+    if (!m) return;
+    const names = m[1].split(',').map(s => s.replace(/\/\*|\*\//g, '').trim()).filter(Boolean);
+    lines[i] = 'stack(' + names.map(n => muted.has(n) ? `/*${n}*/` : n).join(', ') + ')' + m[2];
+    apply(lines.join('\n'));
+  }
+
+  let wake = null;
+  playBtn.addEventListener('click', async () => {
+    if (!repl) return;
+    if (!playing) {
+      playing = true;
+      await repl.evaluate(code, true);
+      playBtn.textContent = '■ Stop';
+      statusEl.textContent = 'Playing. Everything you hear comes from the text on the right.';
+      try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+    } else {
+      playing = false; repl.stop();
+      playBtn.textContent = '▶ Play';
+      statusEl.textContent = 'Stopped.';
+      try { await wake?.release(); } catch {}
+    }
+  });
+
+  $('edit').addEventListener('click', async () => {
+    if (editor.hidden) {
+      editor.value = code; editor.hidden = false; codeEl.hidden = true; $('edit').textContent = 'Run ▶'; editor.focus();
+    } else {
+      const ok = await apply(editor.value);
+      if (ok) { editor.hidden = true; codeEl.hidden = false; $('edit').textContent = 'Edit'; }
+    }
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(code); $('copy').textContent = 'Copied'; }
+    catch { const r = document.createRange(); r.selectNodeContents(codeEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('copy').textContent = 'Selected'; }
+    setTimeout(() => $('copy').textContent = 'Copy', 1500);
+  });
+
+  // ---------- drawing ----------
+  function fit(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, w, h];
+  }
+  const WINDOW = 2, AHEAD = 1.5; // cycles visible, playhead at 25%
+  function visible(now) {
+    const out = []; const b0 = Math.floor(now - (WINDOW - AHEAD)), b1 = Math.floor(now + AHEAD);
+    for (let bar = b0; bar <= b1; bar++) {
+      const loop = Math.floor(bar / BARS) * BARS; const list = model.byBar[((bar % BARS) + BARS) % BARS];
+      for (const h of list) out.push({ ...h, b: h.b + loop, e: h.e + loop });
+    }
+    return out;
+  }
+  function drawLanes(now, vis) {
+    for (const l of LANES) {
+      const [ctx, w, h] = fit(laneEls[l.key].cv);
+      ctx.clearRect(0, 0, w, h);
+      const x0 = now - (WINDOW - AHEAD); const px = w / WINDOW; const head = (WINDOW - AHEAD) * px;
+      // beat grid
+      ctx.strokeStyle = 'rgba(141,147,179,.12)'; ctx.lineWidth = 1;
+      for (let q = Math.ceil(x0 * 4); q <= (x0 + WINDOW) * 4; q++) { const x = (q / 4 - x0) * px; ctx.globalAlpha = q % 4 ? .5 : 1.4; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      const isMuted = muted.has(l.key);
+      const [lo, hi] = model.range[l.key];
+      for (const n of vis) {
+        if (n.lane !== l.key) continue;
+        let y, hh;
+        if (l.key === 'drums') {
+          const r = Math.max(0, DRUM_ROWS.indexOf(n.row)); const rh = h / DRUM_ROWS.length;
+          y = r * rh + 3; hh = rh - 6;
+        } else {
+          const span = Math.max(1, hi - lo); const t = n.midi == null ? .5 : (n.midi - lo) / span;
+          hh = Math.max(4, Math.min(10, (h - 10) / (span + 1) * 1.6)); y = (1 - t) * (h - 8 - hh) + 4;
+        }
+        const x = (n.b - x0) * px; const len = Math.max(3, (n.e - n.b) * px - 1.5);
+        const active = n.b <= now && now < n.e;
+        ctx.globalAlpha = isMuted ? .15 : active ? 1 : (n.b > now ? .45 : .25);
+        ctx.fillStyle = l.color;
+        if (active && !isMuted) { ctx.shadowColor = l.color; ctx.shadowBlur = 14; } else ctx.shadowBlur = 0;
+        ctx.fillRect(x, y, len, hh);
+      }
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      if (l.key === 'drums') {
+        ctx.fillStyle = 'rgba(141,147,179,.7)'; ctx.font = '10px "JetBrains Mono", monospace';
+        DRUM_ROWS.forEach((r, i) => ctx.fillText(r === 'openhat' ? 'open hat' : r, 4, i * h / DRUM_ROWS.length + 12));
+      }
+      ctx.fillStyle = 'rgba(233,235,246,.8)'; ctx.fillRect(head, 0, 1.5, h);
+    }
+  }
+  function drawMap(now) {
+    const [ctx, w, h] = fit($('map'));
+    ctx.clearRect(0, 0, w, h);
+    const padL = 0, cw = (w - padL) / BARS, rh = h / LANES.length;
+    const bar = ((Math.floor(now) % BARS) + BARS) % BARS;
+    LANES.forEach((l, r) => {
+      for (let b = 0; b < BARS; b++) {
+        if (!model.map[l.key][b]) continue;
+        ctx.globalAlpha = muted.has(l.key) ? .15 : (b === bar ? 1 : .55);
+        ctx.fillStyle = l.color; ctx.fillRect(padL + b * cw + 1, r * rh + 2, cw - 2, rh - 4);
+      }
+    });
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#e9ebf6'; ctx.lineWidth = 1.5;
+    const x = padL + (now % BARS + BARS) % BARS * cw; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+  let lit = new Set();
+  function highlight(now, vis) {
+    const next = new Map();
+    for (const n of vis) {
+      if (muted.has(n.lane)) continue;
+      const on = n.b <= now && now < Math.max(n.e, n.b + 0.06);
+      if (!on) continue;
+      const color = LANES.find(l => l.key === n.lane).color;
+      for (const loc of n.locs) for (const s of segSpans.get(loc.start + ':' + loc.end) || []) next.set(s, color);
+    }
+    for (const s of lit) if (!next.has(s)) { s.classList.remove('hit'); }
+    for (const [s, c] of next) { if (!lit.has(s)) s.classList.add('hit'); s.style.setProperty('--c', c); }
+    lit = new Set(next.keys());
+  }
+  function drawNow(now) {
+    const bar = ((Math.floor(now) % BARS) + BARS) % BARS;
+    const beat = Math.floor((now - Math.floor(now)) * 4) + 1;
+    $('pos').textContent = `bar ${bar + 1} of ${BARS} · beat ${beat}`;
+    if (model.chords.length) $('chord').textContent = prettyChord(model.chords[bar % model.chords.length]);
+    for (const l of LANES) laneEls[l.key].chip.classList.toggle('on', !!model.map[l.key][bar] && !muted.has(l.key));
+  }
+
+  const PREVIEW = 16.3; // a still frame from the middle of the track before play is pressed
+  function frame() {
+    if (model) {
+      const now = playing && repl ? Math.max(0, repl.scheduler.now()) : PREVIEW;
+      const vis = visible(now);
+      drawLanes(now, vis); drawMap(now); drawNow(now);
+      if (playing) highlight(now, vis); else if (lit.size) highlight(-99, []);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- boot ----------
+  codeEl.textContent = code;
+  $('strudel').href = strudelLink(code);
+  if (typeof initStrudel !== 'function') {
+    playBtn.textContent = 'Engine failed to load';
+    statusEl.textContent = 'The Strudel engine could not be downloaded. Check the connection and reload, or use Open in Strudel.';
+    return;
+  }
+  initStrudel({ prebake: () => {} }).then(async r => {
+    repl = r;
+    await apply(code);
+    playBtn.disabled = false; playBtn.textContent = '▶ Play';
+    requestAnimationFrame(frame);
+  }).catch(e => {
+    playBtn.textContent = 'Engine failed to start';
+    statusEl.textContent = String(e.message || e);
+  });
+})();
+</script>
